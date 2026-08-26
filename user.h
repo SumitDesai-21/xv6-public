@@ -9,6 +9,7 @@ int pipe(int*);
 int write(int, const void*, int);
 int read(int, void*, int);
 int close(int);
+int lseek(int, int, int);
 int kill(int);
 int exec(char*, char**);
 int open(const char*, int);
