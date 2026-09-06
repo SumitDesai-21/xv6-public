@@ -9,18 +9,17 @@
 #include "mmu.h"
 #include "spinlock.h"
 
+#define MAX_FRAMES 100000
+
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
                    // defined by the kernel linker script in kernel.ld
 
-struct run {
-  struct run *next;
-};
-
 struct {
   struct spinlock lock;
   int use_lock;
-  struct run *freelist;
+  uint frames[MAX_FRAMES];
+  int count;
 } kmem;
 
 // Initialization happens in two phases.
@@ -33,6 +32,7 @@ kinit1(void *vstart, void *vend)
 {
   initlock(&kmem.lock, "kmem");
   kmem.use_lock = 0;
+  kmem.count = 0;
   freerange(vstart, vend);
 }
 
@@ -47,11 +47,13 @@ void
 freerange(void *vstart, void *vend)
 {
   char *p;
+
   p = (char*)PGROUNDUP((uint)vstart);
+
   for(; p + PGSIZE <= (char*)vend; p += PGSIZE)
     kfree(p);
 }
-//PAGEBREAK: 21
+
 // Free the page of physical memory pointed at by v,
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
@@ -59,8 +61,6 @@ freerange(void *vstart, void *vend)
 void
 kfree(char *v)
 {
-  struct run *r;
-
   if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
     panic("kfree");
 
@@ -69,9 +69,14 @@ kfree(char *v)
 
   if(kmem.use_lock)
     acquire(&kmem.lock);
-  r = (struct run*)v;
-  r->next = kmem.freelist;
-  kmem.freelist = r;
+
+  if(kmem.count >= MAX_FRAMES)
+    panic("kfree");
+
+  // Store the physical address of the free frame
+  // in the separate array.
+  kmem.frames[kmem.count++] = V2P(v);
+
   if(kmem.use_lock)
     release(&kmem.lock);
 }
@@ -82,15 +87,23 @@ kfree(char *v)
 char*
 kalloc(void)
 {
-  struct run *r;
+  uint pa;
 
   if(kmem.use_lock)
     acquire(&kmem.lock);
-  r = kmem.freelist;
-  if(r)
-    kmem.freelist = r->next;
+
+  if(kmem.count == 0) {
+    if(kmem.use_lock)
+      release(&kmem.lock);
+    return 0;
+  }
+
+  // Get the physical address of a free frame.
+  pa = kmem.frames[--kmem.count];
+
   if(kmem.use_lock)
     release(&kmem.lock);
-  return (char*)r;
-}
 
+  // Convert physical address to a kernel virtual address.
+  return (char*)P2V(pa);
+}
