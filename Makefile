@@ -181,6 +181,7 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
+	_tryhello\
 	_head\
 	# added _head to this list
 
