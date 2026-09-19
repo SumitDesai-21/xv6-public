@@ -182,6 +182,7 @@ UPROGS=\
 	_wc\
 	_zombie\
 	_head\
+	_tail\
 	# added _head to this list
 
 fs.img: mkfs README $(UPROGS)
